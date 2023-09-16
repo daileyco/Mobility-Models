@@ -2,7 +2,7 @@
 
 ## load data
 load("./01-Data/01-Processed-Data/ct_centroids.rds")
-
+load("./01-Data/01-Processed-Data/census_regions.rds")
 
 
 ## packages
@@ -38,6 +38,10 @@ centers <- bind_rows(pop.centers10 %>% mutate(YEAR = 2010),
   arrange(STATEFP, COUNTYFP, YEAR) %>% 
   select(-POPULATION)
 
+### add census regions
+centers <- left_join(centers, 
+                     regions %>% select(State, Region), 
+                     by = c("STNAME"="State"))
 
 
 ## format as spatial data
