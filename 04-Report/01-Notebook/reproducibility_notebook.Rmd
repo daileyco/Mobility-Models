@@ -3,16 +3,332 @@ title: "Reproducibility Notebook"
 output: html_notebook
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
 
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+# Project Overview
+
+This repository / collection of scripts is a component of Cody Dailey's dissertation research. Altogether, the scope of this dissertation research spans the spatial epidemiology and evolution of seasonal influenza in the United States from 2010 to 2020. Here, I focus on empirical data and theoretical models of human mobility (i.e., work commutes).   
+  
+> How do you eat an elephant?  
+>   
+>> One bite at a time.  
+  
+## Document Overview
+
+This document is my "reproducibility notebook", basically, a data analyst's version of a lab notebook. It contains (hopefully) an easy-to-follow description of data management and analyses with associated scripts. My goal with this document is to ensure reproducibility in my research. Below, I will describe necessary steps in my workflow while sourcing various scripts to implement / execute this workflow. Note that this is supplemental information to the traditional scientific manuscript (which is found in another document) and will include much more technical details and analytical decisions / commentary. 
+
+
+
+# Objective
+
+* To explore regional heterogeneity in human mobility
+
+* To approximate human mobility using gravity and radiation models
+
+
+
+# Approach
+
+## Data Management
+
+My goal is to model human mobility in the United States. First, I will use worker commuting flows data from the American Community Survey, an empirical human mobility network. Second, I will estimate gravity models. Third, I will estimate radiation models. 
+
+The commuting data in its raw format is already a dataframe of adjacency (i.e., it has records for location pairs of origins and destinations, nodes, and the commuter volume between those two locations, edges with weight). The commuting data will be used to estimate the gravity model parameters. To fit the gravity and radiation models, I will also need data for the population sizes of the locations and the distances between locations. To fit the original radiation model, I will only need the population sizes and the distances between locations, as there are not parameters to estimate in the simple version.  
+
+It is important to first consider the granularity of the data. The commuting data are at the county level for spatial scale and are 5-year period estimates for the temporal scale (2011-2015 & 2016-2020). I was able to find data on the location of population centers for US counties for 2010 and 2020; these data include a population size and coordinates for the population centers. While I could find data for the population estimates for each year, the population centers coordinates are not so readily available for each year. I could potentially interpolate between 2010 and 2020 coordinates, but that is likely overly complex for my purposes, especially when considering the commuting data are 5-year estimates themselves. 
+
+So, I will need to think a little bit about how to best align the data to combine across sources. I will use the commuting data as the base dataset and augment it with population data and spatial data (i.e., the coordinates of population centers). The population data will consist of the midpoint year for the commuting data time periods; that is, for the 2011-2015 commuting data I will use 2013 population data and for the 2016-2020 commuting data I will use 2018 population data. For the spatial data, I will use the 2010 population center coordinates for the 2011-2015 commuting data and 2020 population center coordinates for the 2016-2020 commuting data.  
+
+Alors, on y va. 
+
+
+### Initial Cleaning
+
+
+#### Commuting Data
+
+Worker commuting flows from the American Community Survey for both 2011-2015 and 2016-2020 are downloaded as excel spreadsheets, though not in a tidy data format (e.g., there is extra fluff at the top and bottom of the excel tables). The ACS data essentially contain four main variables: a location of residence, a location of work, a point estimate of the number of workers commuting between the two locations, and an estimate of uncertainty (i.e., margin of error) for the point estimate. 
+
+The process script is simple enough as it just loads the data, combines the data from both time ranges, deletes records corresponding to international commutes, and then saves an .rds file. The script is sourced using the following code:
 
 ```{r}
-plot(cars)
+source("./02-Scripts/01-Data-Wrangling/process_Data_ACS.R", echo = T)
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+Potentially in the future, I could generate some data from these point estimates and the measures of uncertainty; after reverse engineering the standard deviation from the margin of error using the sample sizes (https://www.census.gov/acs/www/methodology/sample-size-and-data-quality/sample-size/index.php), I could use a function like `rnorm()` to introduce some variation into the data. For now, we'll just roll with the data as is. 
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+One thing I have been mulling over is how best to deal with the commuting data. As mentioned before, the data represents commuter flows from two non-overlapping 5-year periods. My understanding of this is that it is a cumulative count of how many people commuted from given origins to given destinations in that 5-year period, rather than being a yearly average. So, assuming that the commuter flow volume / counts are cumulative in this way, it seems a little off to combine with the yearly population estimates data directly and to use as the basis for estimating gravity model parameters. In the exploration of the data, it does seem that this 5-year cumulative count of commuters (alliteration for the win) may impact some calculations. For at least one observed commuting flow (Kalawao County, Hawaii --> Maui County, Hawaii from 2016-2020), the number of workers in the commuting flow (343) is larger than the origin population size (87). So, it may not be appropriate to estimate proportions or similar quantities using population sizes in the denominator without accounting for 5-year cumulative counts for the numerator.
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+It may be that the scale of these data do not impact the parameter estimates except for a model intercept (I may try to verify this). A simple remedy may be to divide the total commuter volume by 5 to approximate annual flow volume. I should be able to do this in the same framework. It crossed my mind to duplicate the flow volume / 5 into 5 separate records that would then be matched to yearly population estimates; however, I do not feel this is an appropriate direction and may likely reduce the variance in parameter estimates, but it could be explored later. 
+
+
+
+
+#### Population Data
+
+For the population data, the census has yearly county-level population estimates. Upon initial inspection, there are some issues that will need to be dealt with. 
+
+First, the county-level population estimates for 2010-2020 do not include county-equivalents (or approximates) for Puerto Rico. This is a simple fix as the data for Puerto Rico municipos is found by itself in a separate data download. 
+
+Second and third, there are some alignment issues with Alaska and Connecticut. While exploring the data, the data sources, and relevant documentation, I saw that there have been slight changes in the "counties" for both of these states in ~2019. 
+
+Alaska had a county-equivalent called Valdez-Cordova Census Area that has been split into Chugach Census Area and Copper River Census Area. The population data for 2010-2020 already has the population estimates for these seperated "counties", but the commuting data for 2011-2015 only have records for the combined Valdez-Cordova Census Area. So, as a simple fix, I will just sum the data for Chugach and Copper River for the 2010-2015 years to recreate population estimates for Valdez-Cordova. I considered just downloading and using the 2010-2015 census population estimates that do contain Valdez-Cordova records, but I'm pretty sure that I saw something that the estimates can change from year to year and that newer estimates supersede older ones. It likely wouldn't matter too much, but I'll just go with newer ones.   
+
+Similarly but distinctly, Connecticut has recently requested that the census use newly designated "Planning Regions" rather than their former counties. The population estimates for 2010-2020 still have the records for the counties, not planning regions. However, the commuting data for 2016-2020 have records for the planning regions and not the counties. Since the planning regions are not directly aligned with county borders, I cannot simply aggregate county level data to reflect the planning regions. There are some data "cross walks" (https://github.com/CT-Data-Collaborative/ct-town-to-planning-region) that could help to aggregate population estimates for towns and cities into the new planning regions, but upon quick inspection I noticed some discrepancies that I wasn't sure how to deal with; i.e., the crosswalk relational data have ~175 records and the census data for cities and towns had ~275. Rather than try and sort out what the differences may be and leave myself open to error, I opted for a simpler approach. I was able to find a census notice (https://www.federalregister.gov/documents/2020/12/14/2020-27459/change-to-county-equivalents-in-the-state-of-connecticut) that has a simple table giving 2010 and 2019 population estimates for the planning regions. Also, the census population estimates data at the county level for 2020-2022 have data for the planning regions. So, I downloaded the simple table of planning region population estimates for 2010 and 2019 and used linear regression to linearly interpolate the values for 2011-2018. I packaged this interpolation in a dedicated script which follows:
+
+```{r}
+source("./02-Scripts/01-Data-Wrangling/process_Data_Population_Interpolate_Ct_Planning_Regions.R", echo = T)
+```
+
+With that settled and decisions made regarding Puerto Rico, Alaska, and Connecticut, I can stitch all the population data together in an initial pass. This is done in the following script:
+
+```{r}
+source("./02-Scripts/01-Data-Wrangling/process_Data_Population.R", echo = T)
+```
+
+
+
+#### Spatial Data
+
+The coordinates for the population centers of each county will be used to calculate distances of commutes. The data are available from the census. However, the data lack population center coordinates for Connecticut's planning regions. So, I will download a separate shapefile of the planning regions and calculate the centroids of the spatial polygons to use instead of population centers. This should be sufficient for now. 
+
+This first script calculates the centroids for Connecticut's planning regions:
+
+```{r}
+source("./02-Scripts/01-Data-Wrangling/process_Data_Spatial_Ct_Planning_Regions_Centroids.R", echo = T)
+```
+
+Then, this script combines those coordinates with the population coordinates from the census data and formats all of the as an `sf` spatial data object:
+
+
+```{r}
+source("./02-Scripts/01-Data-Wrangling/process_Data_Spatial.R", echo = T)
+```
+
+
+Other possibilities for the "distances" calculations could be entertained in the future, such as with incorporating travel distance on road networks, travel times, or many other potential layers of connectivity (e.g., flights). The commuting data do not distinguish method of travel, though; so, it is likely a mixed bag of different ways to travel. 
+
+
+
+
+
+### Calculating "Intervening Opportunities"
+
+The final piece to the puzzle (before putting it all together) is the $s_{ij}$ (maybe also called rank?) parameter of the radiation (and related) models. This parameter reflects the number of intervening opportunities, the surrounding population. That is, with respect to a given origin-destination pairing, $s_{ij}$ is the sum total population size of locations other than the origin or destination that are within the same distance from the origin location that the destination location is. In other words, it is the population within a circle centered at the origin location whose radius is the distance between origin and destination locations. 
+
+I couldn't find super clear details on how this value is calculated, so I calculated two versions. The first version simply uses the data that is within the origin-destination dataframe, i.e., the origin and destination population sizes and the distance between them (this is done in the next section/script after bringing all datasets together into one). However, calculating the $s_{ij}$ parameter value from these data seem intuitively incorrect in that not all pairings of counties are accounted for. So, the second version uses all possible pairwise combinations of counties to calculate $s_{ij}$ for each observed commuting flow. 
+
+As mentioned before, there are over 3000 counties or county-equivalents represented in these data. I broke RStudio a couple times trying to figure out how to compute these values: pro-tip don't try to split the data into a list with a lot of elements. Not only are there lots of pairings, but the spatial coordinates data (as `sf` object) takes up a lot of memory as well. So, creating a single dataframe for all possible pairwise combinations of counties with the population data and the population center coordinates (to calculate distances) wasn't feasible on my laptop. Instead, I parallelized the computation by calculating $s_{ij}$ for a single origin location at a time and only stored the value for the observed pairings of counties. There might be another way to do this more efficiently or to brute force with some high-performance computing cluster, but this is what worked for me. The following script calculates $s_{ij}$:
+
+```{r}
+source("./02-Scripts/01-Data-Wrangling/process_Data_calculateSij.R")
+```
+
+
+
+### Creating Origin-Destination Dataframe
+
+With all the separate data sources processed, they are now ready to be combined into an analytical dataset. I will use the commuting data as the foundation and add the population sizes and population center coordinates for origins and destinations. 
+
+The following script augments the commuting data with population sizes and population center coordinates and creates some additional variables to be used in the fitting of mobility models:
+
+```{r}
+source("./02-Scripts/01-Data-Wrangling/process_Data_ODdf.R", echo = T)
+```
+
+
+
+
+
+## Visualizing the Data
+
+### Summary Tables
+As previously mentioned, these data are organized as an origin-destination dataframe. The rows correspond to a pairing of counties between which some positive number of people are reported to have commuted. Each row furthermore contains information on the total count of workers in the commuting flow, the population sizes of origin and destination (or resident and work) counties, the approximate distance between the locations, and a label of which US census region the county belongs to. So, we can generate some summary statistics for these variables in aggregate, partitioned by the time period of the raw data (i.e., 2011-2015 or 2016-2020 for the commuting data and 2013 or 2018, respective to commuting time period, for the population data), partitioned by the census region of the origin location, and partitioned by both time period and census region. 
+
+The following script generates these summary statistics:
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Table_Region_Summaries.R", echo = T)
+```
+
+and this script cleans, formats, and prints them to Word documents into nice-looking tables using the `flextable` package:
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Flextables_Region_Summaries.R", echo = T)
+```
+
+
+### Summary Figures
+
+I will be fitting two broad types of models: distance-decay (e.g., gravity) and intervening opportunity (e.g., radiation) models. For each category, I will fit a few slight variations for comparisons. 
+
+Additionally, I will model two related quantities: (1) the total number of commuters for a given origin location and (2) the total number of commuters who work in their resident county for a given origin location. The total number of commuters (or workers?) is the source population which accounts for all of the individuals who potentially travel between locations. The total number of commuters who work in their resident county correspond to zero-distance commutes in the data as the observed distances are truncated for small distances based on the county size. This quantity of "internal" commutes effectively reduces the number of commuters travelling between counties. Most others seem to either exclude the zero-distance commutes or model them using piece-wise functions for the commute distance. I will simply model them separately. 
+
+Before modeling the data, we can visualize some of the relationships. The following script generates a figure showing the relationship between number of total commuters and commuters who commute within their resident county, outside their resident county but within their resident state, outside their resident state but within their resident census region, or outside their resident census region: 
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Figures_Total_Commuters.R", echo = T)
+```
+
+
+The following script creates a figure to show the relationship between the number of commuters in a particular flow and the distance between locations, the surrounding population (i.e., $s_{ij}$), the origin population size, and the destination population size:
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Figures_Flows.R", echo = T)
+```
+
+
+
+
+
+
+
+
+## Fitting Human Mobility Models
+
+Now, let's move forward with the fitting / estimating of commuter flow between the locations. 
+
+It is possible to fit the different models at different spatial scales / resolutions, e.g., using county-level data or state-level data. Some have shown that the model fits / estimated parameters do differ according to the scale, though. At what spatial scale / resolution should I fit human mobility models?
+
+For the sake of retaining information in the data, it may be better to fit the data at the original county-level scale and then aggregate to the state level for downstream purposes. This has to do with the granularity of the flows. If the fit was at the state level, then a good deal of information in the data would be lost. For example, at the county level, the only flows that have a commuting distance equal to zero are the ones corresponding to workers who work in their resident county; at the state level, all commuter flows of people who work in the same state as they reside would be considered distance zero commutes. Also, it seems more intuitive to model human mobility at this finer spatial scale / resolution; anecdotally (and empirically), it is much more common to cross county borders than state borders.
+
+An advantage of fitting at the state level would be the computational tractability to consider (include in the data) unobserved, implicitly zero commuter flows; that is, pairs of locations where no workers reported commuting between. This is somewhat intractable for the county-level data, as there are over 3000 counties or county-equivalents in the US (i.e., 3220 in 2013 and 3222 in 2018, Alaska and Connecticut each added one division somewhere along the line). (This would correspond to over 5 million pairwise combinations of counties, or over 10 million when considering both time periods of data.) In addition to computational tractability, there would also be another complexity added to the model fitting of zero-inflation; this would force me to use zero-inflated or hurdle models where the zeros versus non-zeros are modeled first, and then the positive values are modeled after. So, all that is lost is the modeling of the zeros, and I'm not sure how valuable those estimates would be (they would potentially relate more to the observation process than that of mobility). (I couldn't find any examples of modeling in this way for human mobility (in a quick search).) 
+
+
+
+
+### Estimating Total Commuters
+
+Some have estimated that the total number of commuters is directly proportional to the resident location population size; they estimate the total commuters are a roughly constant proportion of the resident location population. I want to explore this quantity in how it may change across the two time periods and across the US. So, models are fit using features corresponding to resident location population size, the time period of the data, the census region of the resident location, and interactions between the aforementioned features. 
+
+
+The following script fits linear regression models to estimate the total number of commuters for a given residence location and generates predictions from the best fit model: 
+
+```{r}
+source("./02-Scripts/04-Analysis/estimateTotalCommuters.R", echo = T)
+```
+
+
+
+
+### Estimating Internal Commutes
+
+Relatively, zero-distance internal (intracounty) commutes are a large majority of total commuters from a given origin / residence location. I think this quantity is quite important for two reasons. First, it reflects a direct diminution of the total number of commuters who could potentially travel between separate locations. Second, it may reflect an internal population mixing process that could be important for infectious disease epidemic dynamics. So, I will explore this quantity with some simple models as with the total commuters. 
+
+The following script fits linear regression models to estimate the total number of internal commuters for a given residence location: 
+
+
+```{r}
+source("./02-Scripts/04-Analysis/estimateInternalCommuters.R", echo = T)
+```
+
+
+
+
+
+
+### Distance-decay (Gravity) Models
+
+There are many variations of gravity models. I will not be considering them all, but I will compare the fit of a few. The base model that I will fit will be of the form
+
+$$T_{ij} = C\frac{P_i^{\beta_1}P_j^{\beta_2}}{d_{ij}^{\beta_3}},$$
+where $T_{ij}$ is the commuter flux (number of people) between locations $i$ and $j$, the origin and destination, respectively, $C$ is a constant / intercept, $P_i$ the origin population size, $P_j$ the destination population size, $d_{ij}$ the distance between origin and destination, and $\beta_{1,2,3}$ are the power parameters. By taking the natural logarithm of this equation, I get
+
+$$log(T_{ij}) = C + \beta_1 log(P_i) + \beta_2 log(P_j) - \beta_3 log(d_{ij}),$$
+which will allow me to use multiple linear regression to estimate the parameters. It is possible to use different modeling probability distributions, such as Poisson, negative-binomial, Gamma, or normal. For now, I think I will take a simple approach and assume the normal distribution is adequate and estimate using ordinary least squares, i.e., the `lm()` function. 
+
+Following this base model fit, I will fit an extended version in which an additional parameter corresponding to a distance threshold will be estimated. This is most easily thought of as an indicator variable / interaction variable forcing each of the exponential parameters to be estimated separately for short or long distance commutes, as determined by the estimated threshold. This parameter is not so simply estimated using the linear regression. Rather, I will use the built in `optim()` function of base R to estimate this parameter using root mean square error as an objective function to minimize. 
+
+Additionally, I will fit another extended model that considers population size categories or origin-destination pairings; e.g., if the origin population is small and the destination population is small, then the category will be "small-small". Using tertiles to categorize each origin location and each destination location based on their population sizes will amount to nine categories to describe the origin-destination pairings; i.e., origin and destination populations will each be one of "small", "medium", or "large" and their combination can be any pairwise permutation of the three levels. Again, this is effectively treated as an interaction in which each of the base gravity model parameters will be estimated separately for each population category pairing, doubled again when considering the long distance interaction. So, altogether this full model would estimate the basic gravity model power parameters for 18 groups which vary in whether they correspond to long/short distance flows, small/medium/large origin populations, and small/medium/large destination populations. 
+
+
+#### Tuning Distance Threshold Parameter
+
+Before the different complexity of gravity models can be compared, I need to first calibrate the distance threshold parameter. This distance threshold parameter is chosen to minimize the root mean square error (RMSE) of the gravity model predictions compared to the observed commuter volume. The full 18 group gravity model is used in the tuning of the distance threshold. Additionally, the distance threshold is tuned across different subsets of the total data which are based on combinations of the time period and the census region of the origin location. Three time periods are considered corresponding to the time frames of the commuting data collection: 2011-2015, 2016-2020, or both time periods 2011-2020. Five "regions" are considered corrsponding to the four US census regions (Midwest, Northeast, South, West) plus the entire aggregate US. So, together, there are 15 combinations of time periods and regions for which the distance threshold is calibrated. 
+
+The following script tunes the distance threshold, using parallel computation:
+
+```{r}
+source("./02-Scripts/04-Analysis/tuneGravity.R", echo = T)
+```
+
+
+### Comparing Gravity Model Fits
+
+With the calibrated distance threshold, we can compare the fit of the basic gravity model, the extension with an interaction term for long distances, another extension with interaction terms for long distances and population size category pairings, and a final extension with interaction terms for long distances, population size category pairings, and origin location census region. Each of these models is fit using the same distance threshold which was calibrated with the full data (i.e., 2011-2020 for the entire US). 
+
+The following script fits these gravity models for comparisons:
+
+```{r}
+source("./02-Scripts/04-Analysis/compareGravityModels.R", echo = T)
+```
+
+
+### Estimating Gravity Model Parameters
+
+As a final step in the fitting of the gravity models, the full 18 group gravity model (base, 2 distance groups, 9 population category pairing groups) is fit to varying subsets of the data. This allows me to include all the calibrated distance thresholds while also comparing the estimated power parameters across time periods (2011-2015, 2016-2020, 2011-2020) and regions (Midwest, Northeast, South, West, and the entire US). 
+
+The following script fits the full gravity model to each subset of the data using each data subset's tuned distance threshold:
+
+```{r}
+source("./02-Scripts/04-Analysis/fitGravity.R", echo = T)
+```
+
+
+The estimated power parameters for the full model are shown visually in a series of figures which are created with the following script:
+
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Figures_Gravity_Coefs.R", echo = T)
+```
+
+
+
+
+### Intervening Opportunities Models
+
+Liu and Yan (2020) described a universal opportunity model (https://doi.org/10.1038/s41598-020-61613-y) which is a generalization of the radiation model of Simini, Gonzalez, Maritan, and Barabasi (2012) (https://doi.org/10.1038/nature10856) and other similar intervening opportunity models. 
+
+The universal opportunities model takes the form
+
+$$T_{ij} = T_i \frac{(m_i+\alpha s_{ij})n_j/([m_i+(\alpha +\beta)s_{ij}][m_i+(\alpha+\beta)s_{ij}+n_j])}{\sum_j(m_i+\alpha s_{ij})m_j/([m_i+(\alpha+\beta)s_{ij}][m_i+(\alpha+\beta)s_{ij}+n_j])}$$
+where $T_{ij}$ is the commuter flux between locations $i$ and $j$, $T_i$ is the total number of commuters originating from location $i$, $m_i$ is the population size of location $i$, $n_j$ is the population size of location $j$, $s_{ij}$ is the total population within a circle of radius $r_{ij}$ whose center is at the focal origin location and radius corresponds to the distance between locations $i$ and $j$, and two parameters, $\alpha$ and $\beta$, which correspond to the "exploratory tendency" and "cautious tendency", respectively. 
+
+
+#### Tuning Exploratory and Cautious Tendencies Parameters
+
+The universal opportunity model parameters, $\alpha$ and $\beta$, are calibrated using each of the aforementioned subsets of the data (time period & region). 
+
+The following script calibrates the parameters:
+
+```{r}
+source("./02-Scripts/04-Analysis/tuneUniversalOpportunity.R", echo = T)
+```
+
+
+
+#### Comparing Model Special Cases
+
+Liu and Yan (2020) also describe special cases of this model. 
+
+When $\alpha=0$ and $\beta=0$, this simplifies to the opportunity only model. 
+
+When $\alpha=1$ and $\beta=0$, this simplifies to the opportunity priority selection (OPS) model. 
+
+When $\alpha=0$ and $\beta=1$, this simplifies to the radiation model:
+
+$$T_{ij} = T_i \frac{m_in_j}{(m_i+s_{ij})(m_i+n_j+s_{ij})}.$$
+
+Each of these special cases, and the calibrated universal opportunity models, are used to estimate commuter flux for each of the data subsets and their fits compared. 
+
+Each of the models are fit in the following script:
+
+```{r}
+source("./02-Scripts/04-Analysis/fitUniversalOpportunity.R", echo = T)
+```
+
+
+
+
+
+

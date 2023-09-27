@@ -59,10 +59,11 @@ summary.table.flows.extensive <- od %>%
             across(c(`Workers in Commuting Flow`,
                      p.workers.of.resident.pop,
                      p.workers.of.resident.workers,
-                     distance.km), 
-                   list(`Mean (SD)` = ~(\(..x) paste0(format(round(mean(..x),1), big.mark = " "), " (", format(round(sd(..x),1), big.mark = " "), ")"))(.x), 
-                        `Median [IQR]` = ~(\(..x) paste0(format(round(median(..x),2), big.mark = " "), " [", paste(trimws(format(round(quantile(..x, probs = c(0.25,0.75)),2), big.mark = " ")), collapse = ", "), "]"))(.x), 
-                        `[Min, Max]` = ~(\(..x) paste0("[", paste(trimws(format(round(range(..x),3), big.mark = " ")), collapse = ", "), "]"))(.x)), 
+                     distance.km, 
+                     sij), 
+                   list(`Mean (SD)` = ~(\(..x) paste0(format(round(mean(..x,na.rm=T),1), big.mark = " "), " (", format(round(sd(..x,na.rm=T),1), big.mark = " "), ")"))(.x), 
+                        `Median [IQR]` = ~(\(..x) paste0(format(round(median(..x,na.rm=T),2), big.mark = " "), " [", paste(trimws(format(round(quantile(..x, probs = c(0.25,0.75),na.rm=T),2), big.mark = " ")), collapse = ", "), "]"))(.x), 
+                        `[Min, Max]` = ~(\(..x) paste0("[", paste(trimws(format(round(range(..x,na.rm=T),3), big.mark = " ")), collapse = ", "), "]"))(.x)), 
                    .names = "{.col}_{.fn}")) %>%
   ungroup() %>%
   
@@ -130,7 +131,7 @@ summary.table.commuting.extent <- summary.table.flows.extensive %>%
   ###### clean up, rename, relabel
   mutate(parameter = ifelse(var=="All Flows", "", "n (%)"),
          class = ifelse(var=="All Flows", "", var), 
-         value = ifelse(var=="All Flows", paste0("N = ", value), value),
+         value = ifelse(var=="All Flows", paste0("N = ", trimws(value)), value),
          var = ifelse(var=="All Flows", "Total Workers", "Extent of Workers' Commute")) %>%
   
   ###### rearrange long to wide by region
@@ -146,8 +147,9 @@ summary.table.commuting.extent <- summary.table.flows.extensive %>%
 ##### clean up and make pretty
 summary.table.flows <- bind_rows(summary.table.flows.simple, 
                                  summary.table.commuting.extent) %>%
-  mutate(var = ifelse(var=="distance.km", "Distance (km)", var), 
-         var = factor(var, levels = c("Total Observations", "Total Workers", "Extent of Workers' Commute", "Workers in Commuting Flow", "Distance (km)"), ordered = TRUE), 
+  mutate(var = ifelse(var=="distance.km", "Distance (km)", var),
+         var = ifelse(var=="sij", "Surrounding Population", var),
+         var = factor(var, levels = c("Total Observations", "Total Workers", "Extent of Workers' Commute", "Workers in Commuting Flow", "Distance (km)", "Surrounding Population"), ordered = TRUE), 
          parameter = factor(parameter, levels = c("", "n (%)", "Mean (SD)", "Median [IQR]", "[Min, Max]"), ordered = TRUE), 
          class = factor(class, levels = c("", "Intracounty", "Intrastate", "Intraregion", "Interregion"), ordered = TRUE), 
          period = factor(period, levels = c("2011-2020", "2011-2015", "2016-2020"), ordered = TRUE)) %>%
@@ -242,6 +244,7 @@ summary.table <- bind_rows(summary.table.flows,
                            summary.table.pop) %>%
   mutate(Period = factor(Period, levels = c("2011-2020", "2011-2015", "2013", "2016-2020", "2018"), ordered = TRUE)) %>%
   arrange(Period)
+
 
 
 
