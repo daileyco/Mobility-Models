@@ -244,7 +244,9 @@ Additionally, I will fit another extended model that considers population size c
 
 #### Tuning Distance Threshold Parameter
 
-Before the different complexity of gravity models can be compared, I need to first calibrate the distance threshold parameter. This distance threshold parameter is chosen to minimize the root mean square error (RMSE) of the gravity model predictions compared to the observed commuter volume. The full 18 group gravity model is used in the tuning of the distance threshold. Additionally, the distance threshold is tuned across different subsets of the total data which are based on combinations of the time period and the census region of the origin location. Three time periods are considered corresponding to the time frames of the commuting data collection: 2011-2015, 2016-2020, or both time periods 2011-2020. Five "regions" are considered corrsponding to the four US census regions (Midwest, Northeast, South, West) plus the entire aggregate US. So, together, there are 15 combinations of time periods and regions for which the distance threshold is calibrated. 
+Before the different complexity of gravity models can be compared, I need to first calibrate the distance threshold parameter. This distance threshold parameter is chosen to minimize the root mean square error (RMSE) of the gravity model predictions compared to the observed commuter volume. The gravity models are fit using log-linear models; so, the modeled outcome is the log transformed count of workers in the commuting flow. For the sake of comparisons, I explore the impact of the choice of data scale (i.e., either raw counts referred to as "identity" or log transformed counts) for use in the objective function during optimization. Furthermore, I compare tuning results between a gravity model including only the distance threshold interaction and a gravity model including distance threshold and population size category pairings interactions (i.e., the full 18 group gravity model discussed previously).
+
+The distance threshold is tuned across different subsets of the total data which are based on combinations of the time period and the census region of the origin location. Three time periods are considered corresponding to the time frames of the commuting data collection: 2011-2015, 2016-2020, or both time periods 2011-2020. Five "regions" are considered corresponding to the four US census regions (Midwest, Northeast, South, West) plus the entire aggregate US. So, together, there are 15 combinations of time periods and regions for which the distance threshold is calibrated. 
 
 The following script tunes the distance threshold, using parallel computation:
 
@@ -255,7 +257,12 @@ source("./02-Scripts/04-Analysis/tuneGravity.R", echo = T)
 
 ### Comparing Gravity Model Fits
 
-With the calibrated distance threshold, we can compare the fit of the basic gravity model, the extension with an interaction term for long distances, another extension with interaction terms for long distances and population size category pairings, and a final extension with interaction terms for long distances, population size category pairings, and origin location census region. Each of these models is fit using the same distance threshold which was calibrated with the full data (i.e., 2011-2020 for the entire US). 
+With the calibrated distance threshold, we can compare the fit of the basic gravity model, the extension with an interaction term for long distances, and the extension with interaction terms for long distances and population size category pairings. One intermediary model between the latter two is also fit. This intermediary model is a simplification of the "full" model that includes only an indicator for population size category pairings between large populations (rather than all combinations). This intermediary model is used to gauge whether the "full" model complexity is needed or if simply accounting for the large-to-large population flows is enough. 
+
+Additionally, I add two other extensions of the "full" gravity model: (1) adds interaction with origin location census region, and (2) adds interaction with both origin location census region and time period. 
+
+These models are all fit to the full data spanning 2011-2020 and the entire US, and each use the same distance threshold which was calibrated with the full data (i.e., 2011-2020 for the entire US) fit to 
+"full" model optimizing the objective function on the raw data scale. 
 
 The following script fits these gravity models for comparisons:
 
@@ -289,13 +296,27 @@ source("./02-Scripts/03-Visualization/generate_Figures_Gravity_Coefs.R", echo = 
 
 Liu and Yan (2020) described a universal opportunity model (https://doi.org/10.1038/s41598-020-61613-y) which is a generalization of the radiation model of Simini, Gonzalez, Maritan, and Barabasi (2012) (https://doi.org/10.1038/nature10856) and other similar intervening opportunity models. 
 
-The universal opportunities model takes the form
+The universal opportunities model estimates that the probability that individuals at location $i$ choose to travel to location $j$ is 
 
-$$T_{ij} = T_i \frac{(m_i+\alpha s_{ij})n_j/([m_i+(\alpha +\beta)s_{ij}][m_i+(\alpha+\beta)s_{ij}+n_j])}{\sum_j(m_i+\alpha s_{ij})m_j/([m_i+(\alpha+\beta)s_{ij}][m_i+(\alpha+\beta)s_{ij}+n_j])}$$
-where $T_{ij}$ is the commuter flux between locations $i$ and $j$, $T_i$ is the total number of commuters originating from location $i$, $m_i$ is the population size of location $i$, $n_j$ is the population size of location $j$, $s_{ij}$ is the total population within a circle of radius $r_{ij}$ whose center is at the focal origin location and radius corresponds to the distance between locations $i$ and $j$, and two parameters, $\alpha$ and $\beta$, which correspond to the "exploratory tendency" and "cautious tendency", respectively. 
+$$P_{ij} = \frac{Q_{ij}}{\sum_jQ_{ij}} \propto \frac{(m_i+\alpha s_{ij})n_j}{(m_i+(\alpha +\beta)s_{ij})(m_i+(\alpha+\beta)s_{ij}+n_j)},$$
+where $m_i$ is the population size of location $i$, $n_j$ is the population size of location $j$, $s_{ij}$ is the population surrounding location $i$ (i.e., the population within a circle of radius $r_{ij}$ whose center is at the focal origin location and radius corresponds to the distance between locations $i$ and $j$), and two parameters, $\alpha$ and $\beta$, which correspond to the "exploratory tendency" and "cautious tendency", respectively. 
+
+This probability is normalized over all potential locations $j$ so that
+
+$$P_{ij} = \frac{Q_{ij}}{\sum_jQ_{ij}} =  \frac{(m_i+\alpha s_{ij})n_j/([m_i+(\alpha +\beta)s_{ij}][m_i+(\alpha+\beta)s_{ij}+n_j])}{\sum_j(m_i+\alpha s_{ij})n_j/([m_i+(\alpha+\beta)s_{ij}][m_i+(\alpha+\beta)s_{ij}+n_j])}.$$
+So, the universal opportunity model estimates that
+
+
+$$T_{ij} = T_i P_{ij},$$
+where $T_{ij}$ is the commuter flux between locations $i$ and $j$, and $T_i$ is the total number of commuters originating from location $i$. 
 
 
 #### Tuning Exploratory and Cautious Tendencies Parameters
+
+Liu and Yan (2020) further describe the parameters of the universal opportunity model:
+
+> "Although the UO model has two parameters, they are different from the parameters in some regression analysis models or machine learning models in the sense that they simply improve the prediction accuracy of the model."
+> "[The parameters] not only enable the UO model to better predict human mobility at different spatiotemporal scales than the parameter-free models but also help us better understand the underlying mechanism of the individual’s destination selection behavior in different types of human mobility."
 
 The universal opportunity model parameters, $\alpha$ and $\beta$, are calibrated using each of the aforementioned subsets of the data (time period & region). 
 
@@ -309,15 +330,21 @@ source("./02-Scripts/04-Analysis/tuneUniversalOpportunity.R", echo = T)
 
 #### Comparing Model Special Cases
 
-Liu and Yan (2020) also describe special cases of this model. 
+Liu and Yan (2020) also describe special cases of this model wherein the parameters take "extreme values". 
 
-When $\alpha=0$ and $\beta=0$, this simplifies to the opportunity only model. 
+When $\alpha=0$ and $\beta=0$, this simplifies to the opportunity only model wherein
 
-When $\alpha=1$ and $\beta=0$, this simplifies to the opportunity priority selection (OPS) model. 
+$$P_{ij} \propto \frac{n_j}{(m_i+n_j)}.$$
 
-When $\alpha=0$ and $\beta=1$, this simplifies to the radiation model:
+When $\alpha=1$ and $\beta=0$, this simplifies to the opportunity priority selection (OPS) model wherein 
 
-$$T_{ij} = T_i \frac{m_in_j}{(m_i+s_{ij})(m_i+n_j+s_{ij})}.$$
+$$P_{ij} \propto \frac{n_j}{(m_i+s_{ij}+n_j)}.$$
+
+
+When $\alpha=0$ and $\beta=1$, this simplifies to the radiation model wherein 
+
+$$P_{ij} \propto \frac{m_in_j}{(m_i+s_{ij})(m_i+s_{ij}+n_j)}.$$
+
 
 Each of these special cases, and the calibrated universal opportunity models, are used to estimate commuter flux for each of the data subsets and their fits compared. 
 
@@ -329,6 +356,6 @@ source("./02-Scripts/04-Analysis/fitUniversalOpportunity.R", echo = T)
 
 
 
-
+Now I need to make figures showing the variation in the alphas and betas and comparisons to special cases. Maybe go back to the gravity and fit distance threshold version with interaction with census regions to have simpler way to show variation among regions? ...
 
 

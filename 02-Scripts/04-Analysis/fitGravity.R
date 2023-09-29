@@ -38,7 +38,11 @@ od.list <- od.big %>%
 
 
 
-
+## subset distance thresholds to match length and ordering of data list
+distance.thresholds <- distance.thresholds %>%
+  filter(model.extent == "base*distance_threshold*population_categories" & 
+           objective.scale == "log") %>%
+  arrange(period, region)
 
 
 ## fit models in parallel
@@ -63,11 +67,14 @@ registerDoParallel(cl)
 
 
 fit.list <- foreach(observed.data=iter(od.list),
-                    distance.threshold = distance.thresholds$minimum) %dopar% {
+                    distance.threshold = distance.thresholds$distance_threshold) %dopar% {
   
   observed.data <- createDummies(data=observed.data, dt = distance.threshold)
   
-  fit <- lm(as.formula(paste0("log.Workers.in.Commuting.Flow~", paste0(names(observed.data)[c(21,36:90)], collapse = "+"))), 
+  fit <- lm(as.formula(paste0("log.Workers.in.Commuting.Flow~pop.cats+indicator.long.distance+", 
+                              paste0(names(observed.data)[which(grepl("^.+[_]indicator[.]long[.]distance[0-1][_]pop[.]cats[a-z]{2}$", 
+                                                                      names(observed.data)))], 
+                                     collapse = "+"))), 
             data = observed.data)
   
   # fit.ests <- cbind(coef(fit), confint(fit)) %>% 
@@ -101,17 +108,29 @@ fit.list <- foreach(observed.data=iter(od.list),
   
   fit.stats <- c(AIC = AIC(fit), 
                  BIC = BIC(fit), 
-                 RMSE = calculateRMSE(observed.data$log.Workers.in.Commuting.Flow,
-                                      predict(fit, 
-                                              observed.data, 
-                                              type = "response")))
+                 RMSE_log = calculateRMSE(observed.data$log.Workers.in.Commuting.Flow,
+                                          predict(fit, 
+                                                  observed.data, 
+                                                  type = "response")), 
+                 RMSE_identity = calculateRMSE(observed.data$`Workers in Commuting Flow`,
+                                               exp(predict(fit, 
+                                                           observed.data, 
+                                                           type = "response"))))
   
   fit.data <- c(period = unique(observed.data$period), 
-                region = unique(observed.data$census.region.origin))
+                region = unique(observed.data$census.region.origin), 
+                dt = distance.threshold)
+  
+  groups.n <- observed.data %>% 
+    rename(region = census.region.origin) %>%
+    group_by(period, region, indicator.long.distance, pop.cats) %>% 
+    summarise(n=n()) %>% 
+    ungroup()
   
   list(model = fit.data, 
        gof = fit.stats, 
-       ests = fit.ests) %>% 
+       ests = fit.ests, 
+       groups.n = groups.n) %>% 
     return()
   
 }
@@ -147,13 +166,29 @@ gravity.fits$grav.powers <- lapply(gravity.fits$coefs,
                                        select(-Parameter) 
                                        })
 
+
+groups.n <- lapply(fit.list, 
+                   function(x){
+                     pluck(x, "groups.n")
+                   }) %>% 
+  bind_rows() %>% 
+  mutate(long.distance = as.character(indicator.long.distance), 
+         pop.cat.origin = substr(pop.cats, 1,1), 
+         pop.cat.destination = substr(pop.cats, 2,2)) %>% 
+  select(-indicator.long.distance, -pop.cats)
+
+
+
 gravity.powers <- lapply(1:nrow(gravity.fits), 
                          function(index){
                            bind_cols(gravity.fits[index,1:2], 
                                      gravity.fits[[index,"grav.powers"]])
                          }) %>%
   bind_rows() %>%
-  select(period, region, base, long.distance, pop.cat.origin, pop.cat.destination, Beta, LL, UL) %>%
+  left_join(., 
+            groups.n, 
+            by = c("period", "region", "long.distance", "pop.cat.origin", "pop.cat.destination")) %>%
+  select(period, region, base, long.distance, pop.cat.origin, pop.cat.destination, n, Beta, LL, UL) %>%
   mutate(period = factor(period, levels = c("2011-2020", "2011-2015", "2016-2020"), ordered = TRUE), 
          region = factor(region, levels = c("All US", "Midwest", "Northeast", "South", "West"), ordered = TRUE), 
          base = factor(base, levels = c("log.POPESTIMATE.origin", "log.POPESTIMATE.destination", "log.distance.km"), labels = c("Population Size, Origin", "Population Size, Destination", "Distance (km)"), ordered = TRUE), 

@@ -9,6 +9,7 @@ load("./01-Data/02-Analytic-Data/od.rds")
 
 ## packages
 library(dplyr)
+library(tidyr)
 library(doParallel)
 library(foreach)
 
@@ -40,20 +41,39 @@ od.list <- od.big %>%
 ## define objective function to optimize fit (minimize returned value)
 ### root mean square error 
 ### optim() needs first argument to be parameters
-calculateRMSEforGravityModel <- function(params, observed.data){
+calculateRMSEforGravityModel <- function(params, observed.data, model.extent, objective.scale){
   
   require(dplyr)
   
-  ### extract the column with the observed flux, log-transformed(?)
-  obs <- observed.data %>% 
-    select(log.Workers.in.Commuting.Flow) %>%
-    unlist()
+  if(objective.scale=="identity"){
+    
+    ### extract the column with the observed flux, log-transformed(?)
+    obs <- observed.data %>% 
+      select(`Workers in Commuting Flow`) %>%
+      unlist()
+    
+    ### estimate flux with given parameters
+    #### helper function takes same arguments
+    preds <- calculateGravity(params=params, observed.data=observed.data, model.extent=model.extent) %>%
+      select(gravity.flow) %>%
+      unlist()
+  }
   
-  ### estimate flux with given parameters
-  #### helper function takes same arguments
-  preds <- calculateGravity(params=params, observed.data=observed.data) %>%
-    select(gravity.flow.log) %>%
-    unlist()
+  if(objective.scale=="log"){
+    
+    ### extract the column with the observed flux, log-transformed(?)
+    obs <- observed.data %>% 
+      select(log.Workers.in.Commuting.Flow) %>%
+      unlist()
+    
+    ### estimate flux with given parameters
+    #### helper function takes same arguments
+    preds <- calculateGravity(params=params, observed.data=observed.data, model.extent=model.extent) %>%
+      select(gravity.flow.log) %>%
+      unlist()
+  }
+  
+  
   
   ### compare values observed and estimated/predicted
   calculateRMSE(obs = obs,
@@ -94,7 +114,8 @@ registerDoParallel(cl)
 ###### it did once return better value, but varied with starting point, 
 ###### super accuracy not objective so will go with simpler method
 
-dt.optim.list <- foreach(observed.data=iter(od.list)) %dopar% {
+distance.thresholds <- foreach(observed.data=iter(od.list), 
+                         .combine = bind_rows) %dopar% {
 
   # optim(par = quantile(od$log.distance.km,
   #                      probs = 0.5),
@@ -107,10 +128,39 @@ dt.optim.list <- foreach(observed.data=iter(od.list)) %dopar% {
   #                        probs = 0.99))[1:2] %>%
   #   unlist()
   
-  optimize(f = calculateRMSEforGravityModel, 
-           interval = quantile(od$log.distance.km, 
-                               probs = c(0.01,0.99)), 
-           observed.data = observed.data)
+  
+  model.settings <- expand.grid(period = unique(observed.data$period), 
+                                region = unique(observed.data$census.region.origin), 
+                                model.extent = c("base*distance_threshold", "base*distance_threshold*population_categories"), 
+                                objective.scale = c("identity", "log")) %>%
+    mutate(across(everything(), ~as.character(.x)))
+  
+  dt.tuning <- lapply(1:nrow(model.settings), 
+                      function(index){
+                        optimize(f = calculateRMSEforGravityModel, 
+                                 interval = quantile(od$log.distance.km, 
+                                                     probs = c(0.01,0.99)), 
+                                 observed.data = observed.data, 
+                                 model.extent = model.settings$model.extent[index], 
+                                 objective.scale = model.settings$objective.scale[index])
+                      }) %>%
+    bind_rows()
+  
+  
+  bind_cols(model.settings, 
+            dt.tuning) %>%
+    
+    group_by(model.extent, objective.scale) %>%
+    mutate(complementary.objective = calculateRMSEforGravityModel(params = .data[["minimum"]], 
+                                                                  observed.data = observed.data, 
+                                                                  model.extent = .data[["model.extent"]], 
+                                                                  objective.scale = ifelse(.data[["objective.scale"]]=="identity", 
+                                                                                           "log", 
+                                                                                           "identity"))) %>%
+    ungroup() %>% 
+    
+    return()
+  
 
 }
 
@@ -118,14 +168,26 @@ dt.optim.list <- foreach(observed.data=iter(od.list)) %dopar% {
 stopCluster(cl)
 
 
-## compile results
-
-distance.thresholds <- bind_cols(lapply(od.list, 
-                                        function(x){
-                                          data.frame(period = unique(x$period), 
-                                                     region = unique(x$census.region.origin))
-                                        }) %>% bind_rows(), 
-                                 dt.optim.list %>% bind_rows())
+## clean
+distance.thresholds <- distance.thresholds %>% 
+  pivot_longer(c(objective, complementary.objective), 
+               names_to = "obj", 
+               values_to = "RMSE") %>% 
+  mutate(obj = ifelse(obj=="objective", 
+                      objective.scale, 
+                      ifelse(objective.scale=="log", 
+                             "identity", 
+                             "log"))) %>% 
+  pivot_wider(names_from = obj, 
+              values_from = RMSE, 
+              names_prefix = "RMSE_") %>% 
+  mutate(period = factor(period, 
+                         levels = c("2011-2020", "2011-2015", "2016-2020"), 
+                         ordered = TRUE)) %>% 
+  arrange(period, region, model.extent, objective.scale) %>% 
+  mutate(across(where(is.factor), 
+                ~as.character(.x))) %>% 
+  rename(distance_threshold = minimum)
 
 
 

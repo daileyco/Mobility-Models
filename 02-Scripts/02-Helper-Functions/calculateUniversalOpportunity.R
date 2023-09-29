@@ -66,7 +66,8 @@ calculateUniversalOpportunity <- function(params, observed.data, Svar = "sij", T
     mutate(uo.prob = uo.prob.num/uo.prob.den) %>%
     
     ### multiply probability by Total Commuters originating in Origin Location to estimate flux
-    mutate(uo = .data[[Tvar]]*uo.prob) %>%
+    mutate(uo = .data[[Tvar]]*uo.prob, 
+           uo.log = .data[[paste0("log.", Tvar)]]+log(uo.prob)) %>%
     
     ### return calculated values
     select(matches("uo")) %>%

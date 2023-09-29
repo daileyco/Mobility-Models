@@ -23,43 +23,107 @@
 #### (hardcoded for this project)
 #### log transformed
 
+## model.extent specifies which variation of the model to use
+### "base" is base gravity using only population sizes and distances
+### "base*distance_threshold" incorporates the indicator for long distance, 
+#### models gravity separately for short and long distances
+### "base*distance_threshold*population_categories" incorporates the population category pairings
+#### models gravity separately for the 18 groups specified above
+
 
 # function
 
-calculateGravity <- function(params, observed.data){
+calculateGravity <- function(params, observed.data, model.extent = "base*distance_threshold*population_categories"){
   
   require(dplyr)
   
-  ## adjust indicator based on provided distance threshold
-  observed.data <- observed.data %>%
+  if(model.extent=="base"){
+    ## fit linear model
+    fit <- lm(log.Workers.in.Commuting.Flow ~ 
+                log.POPESTIMATE.origin
+              + log.POPESTIMATE.destination
+              + log.distance.km,
+              data = observed.data)
     
-    mutate(indicator.long.distance = ifelse(log.distance.km>params[1], 1, 0))
-          
+    ## generate and return predictions
+    preds <- observed.data %>%
+      
+      mutate(gravity.flow.log = predict(fit, data.frame(log.POPESTIMATE.origin=log.POPESTIMATE.origin,
+                                                        log.POPESTIMATE.destination=log.POPESTIMATE.destination,
+                                                        log.distance.km=log.distance.km))) %>%
+      
+      mutate(gravity.flow = exp(gravity.flow.log)) %>%
+      
+      select(gravity.flow.log,
+             gravity.flow)
+    
+  }
   
-  ## fit linear model
-  fit <- lm(log.Workers.in.Commuting.Flow ~ 
-              pop.cats*indicator.long.distance*log.POPESTIMATE.origin
-            + pop.cats*indicator.long.distance*log.POPESTIMATE.destination
-            + pop.cats*indicator.long.distance*log.distance.km,
-            data = observed.data)
+  if(model.extent=="base*distance_threshold"){
+    
+    ## adjust indicator based on provided distance threshold
+    observed.data <- observed.data %>%
+      
+      mutate(indicator.long.distance = ifelse(log.distance.km>params[1], 1, 0))
+    
+    
+    ## fit linear model
+    fit <- lm(log.Workers.in.Commuting.Flow ~ 
+                indicator.long.distance*log.POPESTIMATE.origin
+              + indicator.long.distance*log.POPESTIMATE.destination
+              + indicator.long.distance*log.distance.km,
+              data = observed.data)
+    
+    ## generate and return predictions
+    preds <- observed.data %>%
+      
+      mutate(gravity.flow.log = predict(fit, data.frame(log.POPESTIMATE.origin=log.POPESTIMATE.origin,
+                                                        log.POPESTIMATE.destination=log.POPESTIMATE.destination,
+                                                        log.distance.km=log.distance.km,
+                                                        indicator.long.distance=indicator.long.distance))) %>%
+      
+      mutate(gravity.flow = exp(gravity.flow.log)) %>%
+      
+      select(indicator.long.distance, 
+             gravity.flow.log,
+             gravity.flow)
+    
+  }
   
-  ## generate and return predictions
-  observed.data %>%
+  if(model.extent=="base*distance_threshold*population_categories"){
     
-    mutate(gravity.flow.log = predict(fit, data.frame(log.POPESTIMATE.origin=log.POPESTIMATE.origin,
-                                                      log.POPESTIMATE.destination=log.POPESTIMATE.destination,
-                                                      log.distance.km=log.distance.km,
-                                                      indicator.long.distance=indicator.long.distance, 
-                                                      pop.cats=pop.cats))) %>%
+    ## adjust indicator based on provided distance threshold
+    observed.data <- observed.data %>%
+      
+      mutate(indicator.long.distance = ifelse(log.distance.km>params[1], 1, 0))
     
-    mutate(gravity.flow = exp(gravity.flow.log)) %>%
     
-    select(pop.cats, 
-           indicator.long.distance, 
-           gravity.flow.log,
-           gravity.flow) %>%
+    ## fit linear model
+    fit <- lm(log.Workers.in.Commuting.Flow ~ 
+                pop.cats*indicator.long.distance*log.POPESTIMATE.origin
+              + pop.cats*indicator.long.distance*log.POPESTIMATE.destination
+              + pop.cats*indicator.long.distance*log.distance.km,
+              data = observed.data)
     
-    return()
+    ## generate and return predictions
+    preds <- observed.data %>%
+      
+      mutate(gravity.flow.log = predict(fit, data.frame(log.POPESTIMATE.origin=log.POPESTIMATE.origin,
+                                                        log.POPESTIMATE.destination=log.POPESTIMATE.destination,
+                                                        log.distance.km=log.distance.km,
+                                                        indicator.long.distance=indicator.long.distance, 
+                                                        pop.cats=pop.cats))) %>%
+      
+      mutate(gravity.flow = exp(gravity.flow.log)) %>%
+      
+      select(pop.cats, 
+             indicator.long.distance, 
+             gravity.flow.log,
+             gravity.flow)
+    
+  }
+  
+  return(preds)
   
 }
 

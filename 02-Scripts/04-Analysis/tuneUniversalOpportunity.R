@@ -4,7 +4,6 @@
 
 ## load data
 load("./01-Data/02-Analytic-Data/od.rds")
-load("./01-Data/02-Analytic-Data/od_sij.rds")
 load("./01-Data/02-Analytic-Data/predictions_totalcommuters.rds")
 
 ## packages
@@ -58,20 +57,39 @@ od.list <- od.big %>%
 ## define objective function to optimize fit (minimize returned value)
 ### root mean square error 
 ### optim() needs first argument to be parameters
-calculateRMSEforUOModel <- function(params, observed.data, Svar = "sij", Tvar = "Total.Workers.Residence.Domestic"){
+calculateRMSEforUOModel <- function(params, observed.data, Svar = "sij", Tvar = "Total.Workers.Residence.Domestic", objective.scale = "log"){
   
   require(dplyr)
   
-  ### extract the column with the observed flux, log-transformed(?)
-  obs <- observed.data %>% 
-    select(`Workers in Commuting Flow`) %>%
-    unlist()
+  if(objective.scale=="identity"){
+    
+    ### extract the column with the observed flux, log-transformed(?)
+    obs <- observed.data %>% 
+      select(`Workers in Commuting Flow`) %>%
+      unlist()
+    
+    ### estimate flux with given parameters
+    #### helper function takes same arguments
+    preds <- calculateUniversalOpportunity(params=params, observed.data=observed.data, Svar = Svar, Tvar = Tvar) %>%
+      select(uo) %>%
+      unlist()
+    
+  }
   
-  ### estimate flux with given parameters
-  #### helper function takes same arguments
-  preds <- calculateUniversalOpportunity(params=params, observed.data=observed.data, Svar = Svar, Tvar = Tvar) %>%
-    select(uo) %>%
-    unlist()
+  if(objective.scale=="log"){
+    
+    ### extract the column with the observed flux, log-transformed(?)
+    obs <- observed.data %>% 
+      select(log.Workers.in.Commuting.Flow) %>%
+      unlist()
+    
+    ### estimate flux with given parameters
+    #### helper function takes same arguments
+    preds <- calculateUniversalOpportunity(params=params, observed.data=observed.data, Svar = Svar, Tvar = Tvar) %>%
+      select(uo.log) %>%
+      unlist()
+    
+  }
   
   ### compare values observed and estimated/predicted
   calculateRMSE(obs = obs,
@@ -162,13 +180,17 @@ registerDoParallel(cl)
 ##### no provided gradient function (idk where to even start with that) = Nelder-Mead 
 
 
-uo.optim.list <- foreach(observed.data=iter(od.list)) %dorng% {
+uo.params <- foreach(observed.data=iter(od.list), 
+                     .combine = bind_rows) %dorng% {
 
   svars <- c("sij", "sij_within")
   tvars <- c("Total.Workers.Residence.Domestic", "Total.Commuters_pred")
+  objective.scale <- c("identity", "log")
   
   combos <- expand.grid(svar=svars, 
-                        tvar=tvars)
+                        tvar=tvars, 
+                        objective.scale=objective.scale) %>%
+    mutate(across(everything(), ~as.character(.x)))
   
   
   lapply(1:nrow(combos), function(index){
@@ -176,20 +198,30 @@ uo.optim.list <- foreach(observed.data=iter(od.list)) %dorng% {
     constrOptim(theta = c(0.25,0.25), 
                 f = calculateRMSEforUOModel, 
                 observed.data = observed.data,
-                Svar = as.character(combos$svar[index]),
-                Tvar = as.character(combos$tvar[index]),
+                Svar = combos$svar[index],
+                Tvar = combos$tvar[index],
+                objective.scale = combos$objective.scale[index],
                 ui = constraint.matrix, 
                 ci = constraint.vector, 
                 grad = NULL)
     
   })  %>% bind_rows() %>% 
-    mutate(parameter = rep(c("alpha", "beta"),4)) %>% 
+    mutate(parameter = rep(c("alpha", "beta"),8)) %>% 
     select(-counts,-outer.iterations, -barrier.value) %>% 
     pivot_wider(names_from = parameter, values_from = par) %>% 
     bind_cols(., combos) %>%
     mutate(period = unique(observed.data$period), 
            region = unique(observed.data$census.region.origin))%>%
-    select(period, region, svar, tvar, convergence, alpha, beta, RMSE=value) %>%
+    select(period, region, svar, tvar, convergence, alpha, beta, objective.scale, RMSE=value) %>%
+    group_by(svar, tvar, objective.scale) %>%
+    mutate(complementary.objective = calculateRMSEforUOModel(params = c(.data[["alpha"]], .data[["beta"]]),
+                                                             observed.data = observed.data,
+                                                             Svar = .data[["svar"]],
+                                                             Tvar = .data[["tvar"]],
+                                                             objective.scale = ifelse(.data[["objective.scale"]]=="identity",
+                                                                                      "log",
+                                                                                      "identity"))) %>%
+    ungroup() %>%
     return()
   
 }
@@ -198,10 +230,26 @@ uo.optim.list <- foreach(observed.data=iter(od.list)) %dorng% {
 stopCluster(cl)
 
 
-## compile results
+## clean
 
-uo.params <- uo.optim.list %>% 
-  bind_rows()
+uo.params <- uo.params %>% 
+  pivot_longer(c(RMSE, complementary.objective), 
+               names_to = "obj", 
+               values_to = "RMSE") %>% 
+  mutate(obj = ifelse(obj=="RMSE", 
+                      objective.scale, 
+                      ifelse(objective.scale=="log", 
+                             "identity", 
+                             "log"))) %>% 
+  pivot_wider(names_from = obj, 
+              values_from = RMSE, 
+              names_prefix = "RMSE_") %>% 
+  mutate(period = factor(period, 
+                         levels = c("2011-2020", "2011-2015", "2016-2020"), 
+                         ordered = TRUE)) %>% 
+  arrange(period, region, svar, tvar, objective.scale) %>% 
+  mutate(across(where(is.factor), 
+                ~as.character(.x)))
 
 
 ## save 
