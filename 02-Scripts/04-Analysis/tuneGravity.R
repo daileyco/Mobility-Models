@@ -131,7 +131,7 @@ distance.thresholds <- foreach(observed.data=iter(od.list),
   
   model.settings <- expand.grid(period = unique(observed.data$period), 
                                 region = unique(observed.data$census.region.origin), 
-                                model.extent = c("base*distance_threshold", "base*distance_threshold*population_categories"), 
+                                model.extent = c("base*distance_threshold", "base*distance_threshold*large_populations", "base*distance_threshold*population_categories"), 
                                 objective.scale = c("identity", "log")) %>%
     mutate(across(everything(), ~as.character(.x)))
   
@@ -192,7 +192,7 @@ distance.thresholds <- distance.thresholds %>%
 
 
 ## save 
-save(distance.thresholds, file = "./01-Data/02-Analytic-Data/distance_thresholds.rds")
+save(distance.thresholds, file = "./01-Data/02-Analytic-Data/parameters_gravity_distance_thresholds.rds")
 
 
 ## clean environment

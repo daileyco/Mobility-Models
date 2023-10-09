@@ -165,8 +165,8 @@ preds.totalcommuters <- od %>%
 
 ## save 
 ### tables
-save(fit.anovas.totalcommuters, file = "./03-Output/01-Tables/model_anovas_totalcommuters.rds")
-save(fit.ests.totalcommuters, file = "./03-Output/01-Tables/model_coefs_totalcommuters.rds")
+save(fit.anovas.totalcommuters, file = "./03-Output/01-Tables/table_model_anovas_totalcommuters.rds")
+save(fit.ests.totalcommuters, file = "./03-Output/01-Tables/table_model_coefs_totalcommuters.rds")
 ### predictions
 save(preds.totalcommuters, file = "./01-Data/02-Analytic-Data/predictions_totalcommuters.rds")
 

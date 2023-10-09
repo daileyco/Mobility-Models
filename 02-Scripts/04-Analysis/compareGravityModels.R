@@ -2,7 +2,7 @@
 
 ## load data
 load("./01-Data/02-Analytic-Data/od.rds")
-load("./01-Data/02-Analytic-Data/distance_thresholds.rds")
+load("./01-Data/02-Analytic-Data/parameters_gravity_distance_thresholds.rds")
 
 
 ## packages
@@ -24,7 +24,7 @@ od <- od %>%
 this.distance.threshold <- distance.thresholds %>%
   filter(period == "2011-2020" & 
            region == "All US" & 
-           model.extent == "base*distance_threshold*population_categories" & 
+           model.extent == "base*distance_threshold" & 
            objective.scale == "log") %>%
   select(distance_threshold) %>%
   unlist()
@@ -108,7 +108,7 @@ fit.anovas.gravity <- fit.anovas
 
 
 ## save 
-save(fit.anovas.gravity, file = "./03-Output/01-Tables/model_anovas_gravity.rds")
+save(fit.anovas.gravity, file = "./03-Output/01-Tables/table_model_anovas_gravity.rds")
 
 
 ## clean environment

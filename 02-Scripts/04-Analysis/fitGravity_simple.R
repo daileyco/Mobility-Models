@@ -15,7 +15,7 @@ library(tibble)
 library(tidyr)
 
 ## helper functions
-source("./02-Scripts/02-Helper-Functions/createDummies.R")
+source("./02-Scripts/02-Helper-Functions/createDummies_simple.R")
 source("./02-Scripts/02-Helper-Functions/calculateRMSE.R")
 
 
@@ -40,9 +40,9 @@ od.list <- od.big %>%
 
 ## subset distance thresholds to match length and ordering of data list
 distance.thresholds <- distance.thresholds %>%
-  filter(model.extent == "base*distance_threshold*population_categories" & 
+  filter(model.extent == "base*distance_threshold*large_populations" & 
            objective.scale == "log") #%>%
-# arrange(region, period)
+  # arrange(region, period)
 distance.thresholds <- distance.thresholds[match(names(od.list), 
                                                  distance.thresholds %>%
                                                    mutate(pdt = paste0(period,
@@ -78,45 +78,22 @@ fit.list <- foreach(observed.data=iter(od.list),
   
   observed.data <- createDummies(data=observed.data, dt = distance.threshold)
   
-  fit <- lm(as.formula(paste0("log.Workers.in.Commuting.Flow~pop.cats+indicator.long.distance+", 
-                              paste0(names(observed.data)[which(grepl("^.+[_]indicator[.]long[.]distance[0-1][_]pop[.]cats[a-z]{2}$", 
+  fit <- lm(as.formula(paste0("log.Workers.in.Commuting.Flow~indicator.long.distance+indicator.large.population+", 
+                              paste0(names(observed.data)[which(grepl("^.+[_]indicator[.]long[.]distance[0-1][_]indicator[.]large[.]population[0-1]$", 
                                                                       names(observed.data)))], 
                                      collapse = "+"))), 
             data = observed.data)
   
-  # fit.ests <- cbind(coef(fit), confint(fit)) %>% 
-  #   as.data.frame() %>%
-  #   setNames(., nm = c("Beta", "LL", "UL")) %>% 
-  #   
-  #   rownames_to_column(., var = "Parameter") %>%
-  #   mutate(Estimate = paste0(round(Beta, 3), " (", round(LL, 3), ", ", round(UL, 3), ")")) %>%
-  #   select(Parameter, Estimate) %>%
-  #   add_row(., 
-  #           .after = nrow(.), 
-  #           Parameter = "AIC", Estimate = as.character(AIC(fit))) %>%
-  #   add_row(., 
-  #           .after = nrow(.), 
-  #           Parameter = "BIC", Estimate = as.character(BIC(fit))) %>%
-  #   pivot_wider(names_from = "Parameter", values_from = "Estimate") %>% 
-  #   bind_cols(., 
-  #             data.frame("RMSE" = calculateRMSE(observed.data$log.Workers.in.Commuting.Flow,
-  #                                               predict(fit, 
-  #                                                       observed.data, 
-  #                                                       type = "response")), 
-  #                        period = unique(observed.data$period), 
-  #                        region = unique(observed.data$census.region.origin))) %>%
-  #   select(period, region, everything())
-  
+
   fit.ests <- cbind(coef(fit), confint(fit)) %>% 
     as.data.frame() %>%
     setNames(., nm = c("Beta", "LL", "UL")) %>% 
     
     rownames_to_column(., var = "Parameter") 
   
-  
   fit.preds <- bind_cols(observed.data %>%
                            select(period, fips.ij, census.region.origin, POPESTIMATE.origin, POPESTIMATE.destination, `Workers in Commuting Flow`, log.Workers.in.Commuting.Flow) %>%
-                           mutate(id = paste0("gravity_", obs.name)), 
+                           mutate(id = paste0("gravitysimple_", obs.name)), 
                          preds = predict(fit, 
                                          observed.data, 
                                          type = "response"))
@@ -136,7 +113,7 @@ fit.list <- foreach(observed.data=iter(od.list),
   
   groups.n <- observed.data %>% 
     rename(region = census.region.origin) %>%
-    group_by(period, region, indicator.long.distance, pop.cats) %>% 
+    group_by(period, region, indicator.long.distance, indicator.large.population) %>% 
     summarise(n=n()) %>% 
     ungroup()
   
@@ -169,8 +146,7 @@ gravity.fits$coefs <- lapply(gravity.fits$coefs,
                                coefs %>% 
                                  mutate(base = ifelse(grepl("[_]", Parameter), sub("^(.+)[_]indicator[.]long[.]distance[0-1]{1}[_].+$", "\\1", Parameter), NA), 
                                         long.distance = ifelse(grepl("[_]", Parameter), sub("^.+[_]indicator[.]long[.]distance([0-1]{1})[_].+$", "\\1", Parameter), NA), 
-                                        pop.cat.origin = ifelse(grepl("[_]", Parameter), substr(Parameter, nchar(Parameter)-1, nchar(Parameter)-1), NA), 
-                                        pop.cat.destination = ifelse(grepl("[_]", Parameter), substr(Parameter, nchar(Parameter), nchar(Parameter)), NA))
+                                        large.populations = ifelse(grepl("[_]", Parameter), substr(Parameter, nchar(Parameter), nchar(Parameter)), NA))
                              })
 
 gravity.fits$grav.powers <- lapply(gravity.fits$coefs, 
@@ -187,9 +163,8 @@ groups.n <- lapply(fit.list,
                    }) %>% 
   bind_rows() %>% 
   mutate(long.distance = as.character(indicator.long.distance), 
-         pop.cat.origin = substr(pop.cats, 1,1), 
-         pop.cat.destination = substr(pop.cats, 2,2)) %>% 
-  select(-indicator.long.distance, -pop.cats)
+         large.populations = as.character(indicator.large.population)) %>% 
+  select(-indicator.long.distance, -indicator.large.population)
 
 
 
@@ -201,14 +176,14 @@ gravity.powers <- lapply(1:nrow(gravity.fits),
   bind_rows() %>%
   left_join(., 
             groups.n, 
-            by = c("period", "region", "long.distance", "pop.cat.origin", "pop.cat.destination")) %>%
-  select(period, region, base, long.distance, pop.cat.origin, pop.cat.destination, n, Beta, LL, UL) %>%
+            by = c("period", "region", "long.distance", "large.populations")) %>%
+  select(period, region, base, long.distance, large.populations, n, Beta, LL, UL) %>%
   mutate(period = factor(period, levels = c("2011-2020", "2011-2015", "2016-2020"), ordered = TRUE), 
          region = factor(region, levels = c("All US", "Midwest", "Northeast", "South", "West"), ordered = TRUE), 
          base = factor(base, levels = c("log.POPESTIMATE.origin", "log.POPESTIMATE.destination", "log.distance.km"), labels = c("Population Size, Origin", "Population Size, Destination", "Distance (km)"), ordered = TRUE), 
          long.distance = factor(long.distance, levels = 0:1, labels = c("Short", "Long"), ordered = TRUE), 
-         across(matches("pop.cat"), ~factor(.x, levels = c("s", "m", "l"), labels = c("Small", "Medium", "Large"), ordered = TRUE))) %>%
-  arrange(across(1:6))
+         large.populations = factor(large.populations, levels = 0:1, labels = c("Other", "Large-to-Large"), ordered = TRUE)) %>%
+  arrange(across(1:5))
 
 
 
@@ -220,10 +195,16 @@ gravity.preds <- lapply(fit.list,
 
 
 
+## rename
+gravity.fits.simple <- gravity.fits
+gravity.powers.simple <- gravity.powers
+gravity.preds.simple <- gravity.preds
+
 
 ## save 
-save(gravity.fits, gravity.powers, file = "./01-Data/02-Analytic-Data/estimates_gravity_model.rdata")
-save(gravity.preds, file = "./01-Data/02-Analytic-Data/predictions_flow_gravity.rds")
+save(gravity.fits.simple, gravity.powers.simple, file = "./01-Data/02-Analytic-Data/estimates_gravity_model_simple.rdata")
+save(gravity.preds.simple, file = "./01-Data/02-Analytic-Data/predictions_flow_gravitysimple.rds")
+
 
 ## clean environment
 rm(list=ls())

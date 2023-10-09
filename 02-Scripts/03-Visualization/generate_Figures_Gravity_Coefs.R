@@ -1,7 +1,7 @@
 # script to generate figures of gravity model coefficients
 
 ## load data
-load("./01-Data/02-Analytic-Data/gravity_model_estimates.rdata")
+load("./01-Data/02-Analytic-Data/estimates_gravity_model.rdata")
 
 
 ## packages
@@ -29,7 +29,7 @@ for(i in 1:length(gp.list$`Population Size, Origin`)){
   
   name.string <- names(gp.list$`Population Size, Origin`)[i]
   
-  png(filename = paste0("./03-Output/02-Figures/gravity_originpoppower_", name.string, ".png"), units = "in", height = 16, width = 16, res = 300, pointsize = 10)
+  png(filename = paste0("./03-Output/02-Figures/figure_gravity_originpoppower_", name.string, ".png"), units = "in", height = 16, width = 16, res = 300, pointsize = 10)
   
   par(mfcol = c(3,3))
   
@@ -63,7 +63,7 @@ for(i in 1:length(gp.list$`Population Size, Destination`)){
   
   name.string <- names(gp.list$`Population Size, Destination`)[i]
   
-  png(filename = paste0("./03-Output/02-Figures/gravity_destpoppower_", name.string, ".png"), units = "in", height = 16, width = 16, res = 300, pointsize = 10)
+  png(filename = paste0("./03-Output/02-Figures/figure_gravity_destpoppower_", name.string, ".png"), units = "in", height = 16, width = 16, res = 300, pointsize = 10)
   
   par(mfcol = c(3,3))
   
@@ -99,7 +99,7 @@ for(i in 1:length(gp.list$`Distance (km)`)){
   
   name.string <- names(gp.list$`Distance (km)`)[i]
   
-  png(filename = paste0("./03-Output/02-Figures/gravity_distancepower_", name.string, ".png"), units = "in", height = 16, width = 16, res = 300, pointsize = 10)
+  png(filename = paste0("./03-Output/02-Figures/figure_gravity_distancepower_", name.string, ".png"), units = "in", height = 16, width = 16, res = 300, pointsize = 10)
   
   par(mfcol = c(3,3))
   

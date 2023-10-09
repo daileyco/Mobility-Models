@@ -253,7 +253,7 @@ uo.params <- uo.params %>%
 
 
 ## save 
-save(uo.params, file = "./01-Data/02-Analytic-Data/uo_model_params.rds")
+save(uo.params, file = "./01-Data/02-Analytic-Data/parameters_uo_alphabeta.rds")
 
 
 ## clean environment

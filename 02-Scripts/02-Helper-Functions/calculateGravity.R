@@ -90,6 +90,45 @@ calculateGravity <- function(params, observed.data, model.extent = "base*distanc
     
   }
   
+  
+  if(model.extent=="base*distance_threshold*large_populations"){
+    
+    ## adjust indicator based on provided distance threshold
+    observed.data <- observed.data %>%
+      
+      mutate(indicator.long.distance = ifelse(log.distance.km>params[1], 1, 0), 
+             indicator.large.population = ifelse(pop.cats=="ll", 1, 0))
+    
+    
+    ## fit linear model
+    fit <- lm(log.Workers.in.Commuting.Flow ~ 
+                indicator.long.distance*indicator.large.population*log.POPESTIMATE.origin
+              + indicator.long.distance*indicator.large.population*log.POPESTIMATE.destination
+              + indicator.long.distance*indicator.large.population*log.distance.km,
+              data = observed.data)
+    
+    ## generate and return predictions
+    preds <- observed.data %>%
+      
+      mutate(gravity.flow.log = predict(fit, data.frame(log.POPESTIMATE.origin=log.POPESTIMATE.origin,
+                                                        log.POPESTIMATE.destination=log.POPESTIMATE.destination,
+                                                        log.distance.km=log.distance.km,
+                                                        indicator.long.distance=indicator.long.distance,
+                                                        indicator.large.population=indicator.large.population))) %>%
+      
+      mutate(gravity.flow = exp(gravity.flow.log)) %>%
+      
+      select(indicator.long.distance, 
+             indicator.large.population,
+             gravity.flow.log,
+             gravity.flow)
+    
+  }
+  
+  
+  
+  
+  
   if(model.extent=="base*distance_threshold*population_categories"){
     
     ## adjust indicator based on provided distance threshold

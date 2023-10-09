@@ -98,7 +98,16 @@ This first script calculates the centroids for Connecticut's planning regions:
 source("./02-Scripts/01-Data-Wrangling/process_Data_Spatial_Ct_Planning_Regions_Centroids.R", echo = T)
 ```
 
-Then, this script combines those coordinates with the population coordinates from the census data and formats all of the as an `sf` spatial data object:
+
+The following script processes a simple table with census region designations for each state:
+
+```{r}
+source("./02-Scripts/01-Data-Wrangling/process_Data_Spatial_Census_Regions.R", echo = T)
+```
+
+
+
+Finally, this script combines those coordinates with the population coordinates from the census data and formats all of the as an `sf` spatial data object:
 
 
 ```{r}
@@ -244,7 +253,7 @@ Additionally, I will fit another extended model that considers population size c
 
 #### Tuning Distance Threshold Parameter
 
-Before the different complexity of gravity models can be compared, I need to first calibrate the distance threshold parameter. This distance threshold parameter is chosen to minimize the root mean square error (RMSE) of the gravity model predictions compared to the observed commuter volume. The gravity models are fit using log-linear models; so, the modeled outcome is the log transformed count of workers in the commuting flow. For the sake of comparisons, I explore the impact of the choice of data scale (i.e., either raw counts referred to as "identity" or log transformed counts) for use in the objective function during optimization. Furthermore, I compare tuning results between a gravity model including only the distance threshold interaction and a gravity model including distance threshold and population size category pairings interactions (i.e., the full 18 group gravity model discussed previously).
+Before the different complexity of gravity models can be compared, I need to first calibrate the distance threshold parameter. This distance threshold parameter is chosen to minimize the root mean square error (RMSE) of the gravity model predictions compared to the observed commuter volume. The gravity models are fit using log-linear models; so, the modeled outcome is the log transformed count of workers in the commuting flow. For the sake of comparisons, I explore the impact of the choice of data scale (i.e., either raw counts referred to as "identity" or log transformed counts) for use in the objective function during optimization. Furthermore, I compare tuning results between a gravity model including only the distance threshold interaction, a gravity model inclusing distance threshold interaction and pairings between two large populations, and a gravity model including distance threshold and population size category pairings interactions (i.e., the full 18 group gravity model discussed previously).
 
 The distance threshold is tuned across different subsets of the total data which are based on combinations of the time period and the census region of the origin location. Three time periods are considered corresponding to the time frames of the commuting data collection: 2011-2015, 2016-2020, or both time periods 2011-2020. Five "regions" are considered corresponding to the four US census regions (Midwest, Northeast, South, West) plus the entire aggregate US. So, together, there are 15 combinations of time periods and regions for which the distance threshold is calibrated. 
 
@@ -261,8 +270,7 @@ With the calibrated distance threshold, we can compare the fit of the basic grav
 
 Additionally, I add two other extensions of the "full" gravity model: (1) adds interaction with origin location census region, and (2) adds interaction with both origin location census region and time period. 
 
-These models are all fit to the full data spanning 2011-2020 and the entire US, and each use the same distance threshold which was calibrated with the full data (i.e., 2011-2020 for the entire US) fit to 
-"full" model optimizing the objective function on the raw data scale. 
+These models are all fit to the full data spanning 2011-2020 and the entire US, and each use the same distance threshold which was calibrated with the full data (i.e., 2011-2020 for the entire US) using the gravity model with only distance threshold interaction optimized with the objective function on the raw data scale. 
 
 The following script fits these gravity models for comparisons:
 
@@ -282,12 +290,13 @@ source("./02-Scripts/04-Analysis/fitGravity.R", echo = T)
 ```
 
 
-The estimated power parameters for the full model are shown visually in a series of figures which are created with the following script:
 
+The following script fits a simpler gravity model (base+distance_threshold+large_populations) to each subset of the data using each data subset's tuned distance threshold:
 
 ```{r}
-source("./02-Scripts/03-Visualization/generate_Figures_Gravity_Coefs.R", echo = T)
+source("./02-Scripts/04-Analysis/fitGravity_simple.R", echo = T)
 ```
+
 
 
 
@@ -327,7 +336,6 @@ source("./02-Scripts/04-Analysis/tuneUniversalOpportunity.R", echo = T)
 ```
 
 
-
 #### Comparing Model Special Cases
 
 Liu and Yan (2020) also describe special cases of this model wherein the parameters take "extreme values". 
@@ -356,6 +364,132 @@ source("./02-Scripts/04-Analysis/fitUniversalOpportunity.R", echo = T)
 
 
 
-Now I need to make figures showing the variation in the alphas and betas and comparisons to special cases. Maybe go back to the gravity and fit distance threshold version with interaction with census regions to have simpler way to show variation among regions? ...
 
 
+
+
+
+
+
+
+## Visualization II
+
+
+### Tuning Parameters
+This script visualizes the optimized parameter values for each combination of time period and region across the different gravity models and objective function scales:
+```{r}
+source("./02-Scripts/03-Visualization/generate_Figures_Gravity_Distance_Thresholds.R", echo = T)
+```
+
+and in tables:
+```{r}
+source("./02-Scripts/03-Visualization/generate_Table_Gravity_Tuning.R", echo = T)
+```
+
+
+This script visualizes the optimized parameter values for each combination of time period and region across choices of $S_{ij}$ and $T_i$ and objective function scales:
+```{r}
+source("./02-Scripts/03-Visualization/generate_Figures_UO_Parameters.R", echo = T)
+```
+
+and in tables:
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Table_UO_Tuning.R", echo = T)
+```
+
+
+Tuning tables for both gravity and UO models are formatted in this script:
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Flextables_Model_Tuning.R", echo = T)
+```
+
+
+
+
+
+### Model and Feature Selection
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Flextables_Model_ANOVA.R", echo = T)
+```
+
+
+
+
+### Coefficient Estimates
+
+
+
+The estimated power parameters for the full model are shown visually in a series of figures which are created with the following script:
+
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Figures_Gravity_Coefs.R", echo = T)
+```
+
+
+The estimated power parameters for the simpler model are shown visually in a series of figures which are created with the following script:
+
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Figures_Gravity_Coefs_simple.R", echo = T)
+```
+
+
+
+
+
+Along with coefficient estimates for the models of total commuters and internal commuters, these power parameter estimates are shown in tables using these scripts:
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Tables_Gravity_Fit.R", echo = T)
+source("./02-Scripts/03-Visualization/generate_Flextables_Model_Coefs.R", echo = T)
+```
+
+
+
+### Fit Stats (RMSE)
+
+The gravity models fit stats are compiled alongside the coefficient estimates done just before. 
+
+The UO models fit stats are tabulated here:
+```{r}
+source("./02-Scripts/03-Visualization/generate_Table_UO_Fit.R", echo = T)
+```
+
+
+and all fit stats tables are formatted here:
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Flextables_Model_Fits.R", echo = T)
+```
+
+
+The model fits are compared visually in figures with this script:
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Figures_Model_Fits.R", echo = T)
+```
+
+
+
+
+
+
+I aggregate and clean predictions of commuter flow from each model with each "setting" in this script:
+```{r}
+source("./02-Scripts/01-Data-Wrangling/process_Data_Predictions_Flow.R", echo = T)
+```
+
+
+And finally, figures showing predicted flows against observed flow quantiles across models and data subsets are created in this script:
+
+```{r}
+source("./02-Scripts/03-Visualization/generate_Figures_Flows_ObsVPred.R", echo = T)
+```
+
+
+
+:)

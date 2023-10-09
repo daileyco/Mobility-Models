@@ -4,13 +4,14 @@
 ## load data
 load("./01-Data/02-Analytic-Data/od.rds")
 load("./01-Data/02-Analytic-Data/predictions_totalcommuters.rds")
-load("./01-Data/02-Analytic-Data/uo_model_params.rds")
+load("./01-Data/02-Analytic-Data/parameters_uo_alphabeta.rds")
 
 ## packages
 library(dplyr)
 library(foreach)
 library(doParallel)
 library(tidyr)
+library(purrr)
 
 
 ## helper functions
@@ -64,9 +65,12 @@ uo.params.list <- uo.params %>%
   select(period, region, svar, tvar, alpha, beta, objective.scale) %>%
   mutate(model = "UO") %>%
   bind_rows(., 
-            mutate(., model = "OO", alpha = 0, beta = 0), 
-            mutate(., model = "OPS", alpha = 1, beta = 0), 
-            mutate(., model = "Radiation", alpha = 0, beta = 1)) %>%
+            mutate(., model = "OO", alpha = 0, beta = 0, objective.scale="")%>%
+              filter(!duplicated(.)), 
+            mutate(., model = "OPS", alpha = 1, beta = 0, objective.scale="")%>%
+              filter(!duplicated(.)), 
+            mutate(., model = "Radiation", alpha = 0, beta = 1, objective.scale="")%>%
+              filter(!duplicated(.))) %>%
   mutate(across(where(is.factor), ~as.character(.x))) %>%
   split(., f = ~period+region)
 
@@ -86,6 +90,8 @@ clusterEvalQ(cl,
              {
                
                library(dplyr)
+               library(tidyr)
+               library(purrr)
                
              })
 
@@ -96,9 +102,9 @@ registerDoParallel(cl)
 
 ### generate estimates
 
-fit.list <- foreach(observed.data=iter(od.list), 
-                    paramset=iter(uo.params.list), 
-                    .combine = bind_rows) %dopar% {
+fit.list <- foreach(observed.data=iter(od.list),
+                    obs.name = names(od.list),
+                    paramset=iter(uo.params.list)) %dopar% {
                       
                       
                       obs <- observed.data$`Workers in Commuting Flow`
@@ -112,7 +118,7 @@ fit.list <- foreach(observed.data=iter(od.list),
                                                                   Tvar = unlist(paramset[index, "tvar"])) %>%
                           select(uo, uo.log)
                         
-                        preds <- preds.uo %>%
+                        preds.id <- preds.uo %>%
                           select(uo) %>%
                           unlist()
                         
@@ -122,12 +128,39 @@ fit.list <- foreach(observed.data=iter(od.list),
                         
                         uo <- paramset[index,] %>% 
                           mutate(RMSE_identity = calculateRMSE(obs = obs,
-                                                               preds = preds), 
+                                                               preds = preds.id), 
                                  RMSE_log = calculateRMSE(obs = obs.log, 
                                                           preds = preds.log))
                         
+                        
+                        preds <- bind_cols(observed.data%>%
+                                             select(period, fips.ij, census.region.origin, POPESTIMATE.origin, POPESTIMATE.destination, `Workers in Commuting Flow`, log.Workers.in.Commuting.Flow) %>%
+                                             mutate(id = paste0("uo_", obs.name), 
+                                                    alpha = unlist(paramset[index, c("alpha")]), 
+                                                    beta = unlist(paramset[index, c("beta")]),
+                                                    Svar = unlist(paramset[index, "svar"]), 
+                                                    Tvar = unlist(paramset[index, "tvar"]), 
+                                                    model = unlist(paramset[index, "model"]),
+                                                    objective.scale = unlist(paramset[index, "objective.scale"])), 
+                                           preds.uo)
+                        
+                        list(uo=uo, 
+                             preds=preds) %>%
+                          return()
+                        
                       })  %>% 
-                        bind_rows() %>% 
+                        (\(x) {
+                          uo.fits <- lapply(x, (\(y) pluck(y, "uo"))) %>%
+                            bind_rows()
+                          uo.preds <- lapply(x, (\(y) pluck(y, "preds"))) %>%
+                            bind_rows() %>%
+                            select(-alpha, -beta, -period, -census.region.origin) %>%
+                            pivot_wider(names_from = c(id, model, objective.scale, Svar, Tvar ), values_from = c(uo, uo.log), names_prefix = "preds", names_sep = "__")
+                          # 
+                          list(uo.fits=uo.fits, 
+                               uo.preds=uo.preds)%>%
+                            return()
+                        }) %>% 
                         return()
                     }
 
@@ -135,14 +168,28 @@ fit.list <- foreach(observed.data=iter(od.list),
 stopCluster(cl)
 
 
-## rename
+## compile
 
-uo.fits <- fit.list
+uo.fits <- lapply(fit.list, 
+                  (\(x) pluck(x, "uo.fits"))) %>%
+  bind_rows()
 
+
+for(i in 1:length(fit.list)){
+  
+  preds <- pluck(fit.list[[i]], "uo.preds")
+  
+  if(i==1){
+    uo.preds <<- full_join(od, preds, by = c("fips.ij", "POPESTIMATE.origin", "POPESTIMATE.destination", "Workers in Commuting Flow", "log.Workers.in.Commuting.Flow"))
+  }else{
+    uo.preds <<- full_join(uo.preds, preds, by = c("fips.ij", "POPESTIMATE.origin", "POPESTIMATE.destination", "Workers in Commuting Flow", "log.Workers.in.Commuting.Flow"))
+  }
+  
+}
 
 ## save 
-save(uo.fits, file = "./01-Data/02-Analytic-Data/uo_model_fits.rds")
-
+save(uo.fits, file = "./01-Data/02-Analytic-Data/fits_uo_model.rds")
+save(uo.preds, file = "./01-Data/02-Analytic-Data/predictions_flow_uo.rds")
 
 ## clean environment
 rm(list=ls())

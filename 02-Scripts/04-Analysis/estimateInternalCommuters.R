@@ -161,8 +161,8 @@ preds.internalcommuters <- od %>%
 
 ## save 
 ### tables
-save(fit.anovas.internalcommuters, file = "./03-Output/01-Tables/model_anovas_internalcommuters.rds")
-save(fit.ests.internalcommuters, file = "./03-Output/01-Tables/model_coefs_internalcommuters.rds")
+save(fit.anovas.internalcommuters, file = "./03-Output/01-Tables/table_model_anovas_internalcommuters.rds")
+save(fit.ests.internalcommuters, file = "./03-Output/01-Tables/table_model_coefs_internalcommuters.rds")
 ### predictions
 save(preds.internalcommuters, file = "./01-Data/02-Analytic-Data/predictions_internalcommuters.rds")
 
