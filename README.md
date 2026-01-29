@@ -1,4 +1,76 @@
-# Project Skeleton
+# Mobility Models Repo
+
+Spatial scales have proven to be an important feature in the ecology of infectious diseases. However, spatial scales lack clear definitions. 
+
+Therefore, the objective of this analysis is to characterize a "local" scale of human mobility within the US and explore its variability across larger regional scales.
+
+This repo relates to the first part of Chapter 2 in [my PhD dissertation](https://esploro.libs.uga.edu/esploro/outputs/9949694128302959).
+
+Feel free to reach out to me (daileyco@gmail.com) or my PhD advisor, Justin Bahl (Justin.Bahl@uga.edu), with any questions. 
+
+## Repo Contents
+
+This repo contains scripts that: 
+
+- read and manage input data, 
+- fit human mobility models to commuting data,
+- explore differences in commuting patterns,
+- and generate various tables and figures showing important patterns in the data or analytical results.
+
+
+The scripts in this repo (and others of my creation) are highly modular. The scripts are designed to be run in a particular sequence that ensures the output(s) saved from upstream scripts are available for input(s) in downstream scripts. (See the bottom of this readme for a generic description of repo contents/structure.)
+
+There are two files that outline the order of scripts and give details on their individual purposes. 
+- "00-Information/script_census-[compile date].xlsx"
+- "04-Report/01-Notebook/reproducibility_notebook.rmd"
+
+The script census excel file gives details on scripts in this repo, including its purpose, inputs, package dependencies, and outputs. The creation of this excel file was automated (".02-Scripts/Script_Census.R"), so there are likely some errors in formatting or omitted information. Each script itself has some comments explaining the intent for sections of the code. 
+The reproducibility notebook is a combination of (1) a narrative explaining analysis steps and (2) a master script which sources/runs all of the main analysis scripts.
+
+A few of the columns from the script census are shown in the table below. (created with knitr::kable(census[,c(2,1,3)]))
+
+|Script Location   |Script Name                                               |Purpose                                                                                                             |
+|:-----------------|:---------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------|
+|01-Data-Wrangling |process_Data_ACS.R                                        |ACS Data Processing                                                                                                 |
+|01-Data-Wrangling |process_Data_Population_Interpolate_Ct_Planning_Regions.R |Interpolate Connecticut Planning Region Population Estimates                                                        |
+|01-Data-Wrangling |process_Data_Population.R                                 |Process county population data                                                                                      |
+|01-Data-Wrangling |process_Data_Spatial_Ct_Planning_Regions_Centroids.R      |Computing centroid coordinates for Ct planning regions                                                              |
+|01-Data-Wrangling |process_Data_Spatial_Census_Regions.R                     |Spatial Data Processing for Census Region Identifiers                                                               |
+|01-Data-Wrangling |process_Data_Spatial.R                                    |Spatial Data Processing                                                                                             |
+|01-Data-Wrangling |process_Data_calculateSij.R                               |calculate sij for all pairwise combinations of US counties                                                          |
+|01-Data-Wrangling |process_Data_ODdf.R                                       |Set up origin destination dataframe for mobility model fitting                                                      |
+|03-Visualization  |generate_Table_Region_Summaries.R                         |Script to create summary table                                                                                      |
+|03-Visualization  |generate_Flextables_Region_Summaries.R                    |script to format summary tables and save to word docs                                                               |
+|03-Visualization  |generate_Figures_Total_Commuters.R                        |Script to create figure showing total commuters vs population at origin                                             |
+|03-Visualization  |generate_Figures_Flows.R                                  |Script to create figure showing flux vs distance, surrounding population, population origin, population destination |
+|04-Analysis       |estimateTotalCommuters.R                                  |script to estimate total commuters (workers) based on population size, time period, and census region               |
+|04-Analysis       |estimateInternalCommuters.R                               |script to estimate total internal commuters (workers) based on population size, time period, and census region      |
+|04-Analysis       |tuneGravity.R                                             |script to tune the distance threshold for the gravity model for different data subsets                              |
+|04-Analysis       |compareGravityModels.R                                    |Compare variations of gravity models                                                                                |
+|04-Analysis       |fitGravity.R                                              |fit gravity models                                                                                                  |
+|04-Analysis       |fitGravity_simple.R                                       |fit gravity models                                                                                                  |
+|04-Analysis       |tuneUniversalOpportunity.R                                |script to tune the parameters for the universal opportunity model for different data subsets                        |
+|04-Analysis       |fitUniversalOpportunity.R                                 |script to fit the universal opportunity model variations for different data subsets                                 |
+|03-Visualization  |generate_Figures_Gravity_Distance_Thresholds.R            |Script to create figure showing total commuters vs population at origin                                             |
+|03-Visualization  |generate_Table_Gravity_Tuning.R                           |script to make summary tables for gravity model tuning for distance threshold                                       |
+|03-Visualization  |generate_Figures_UO_Parameters.R                          |Script to create figure showing total commuters vs population at origin                                             |
+|03-Visualization  |generate_Table_UO_Tuning.R                                |script to make summary tables for gravity model tuning for distance threshold                                       |
+|03-Visualization  |generate_Flextables_Model_Tuning.R                        |script to format model summary tables and save to word docs                                                         |
+|03-Visualization  |generate_Flextables_Model_ANOVA.R                         |script to format model summary tables and save to word docs                                                         |
+|03-Visualization  |generate_Figures_Gravity_Coefs.R                          |script to generate figures of gravity model coefficients                                                            |
+|03-Visualization  |generate_Figures_Gravity_Coefs_simple.R                   |script to generate figures of gravity model coefficients                                                            |
+|03-Visualization  |generate_Tables_Gravity_Fit.R                             |script to make summary tables for gravity model fits                                                                |
+|03-Visualization  |generate_Flextables_Model_Coefs.R                         |script to format model summary tables and save to word docs                                                         |
+|03-Visualization  |generate_Table_UO_Fit.R                                   |script to make summary tables for gravity model fits                                                                |
+|03-Visualization  |generate_Flextables_Model_Fits.R                          |script to format model summary tables and save to word docs                                                         |
+|03-Visualization  |generate_Figures_Model_Fits.R                             |Script to create figure showing total commuters vs population at origin                                             |
+|01-Data-Wrangling |process_Data_Predictions_Flow.R                           |load data                                                                                                           |
+|03-Visualization  |generate_Figures_Flows_ObsVPred.R                         |script to plot model predictions against observed values of commuting flow.                                         |
+
+
+
+
+# Project Skeleton (my generic repo template)
 
 A basic repo template (directory structure) to be use as starting point for new projects.
 
